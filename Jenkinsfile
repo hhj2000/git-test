@@ -3,7 +3,11 @@ pipeline {
 
     environment {
         IMAGE = 'harbor.skala-gj.com/skala-gj3/g104-devops-lab-app'
-        TAG = '2ec4a2b'
+    }
+
+    options {
+        timeout(time: 20, unit: 'MINUTES')
+        skipDefaultCheckout(true)
     }
 
     stages {
@@ -11,27 +15,33 @@ pipeline {
             steps {
                 echo '소스코드 가져오기'
                 checkout scm
+
+                script {
+                    env.TAG = sh(
+                        script: 'git rev-parse HEAD',
+                        returnStdout: true
+                    ).trim().take(7)
+                }
+
+                echo "이미지: ${env.IMAGE}:${env.TAG}"
             }
         }
 
         stage('Build') {
             steps {
-                echo '빌드 수행'
-                sh 'echo "build start"'
+                // 테스트는 다음 단계에서 실행
+                sh './gradlew :app:assemble --no-daemon'
             }
         }
 
         stage('Test') {
             steps {
-                dir('app') {
-                    // 테스트 실패 시 다음 단계로 진행하지 않음
-                    sh './gradlew test --no-daemon'
-                }
+                // 루트의 Wrapper로 app 프로젝트 테스트 실행
+                sh './gradlew :app:test --no-daemon'
             }
 
             post {
                 always {
-                    // 성공 여부와 관계없이 테스트 결과 수집
                     junit 'app/build/test-results/test/*.xml'
                 }
             }
@@ -39,7 +49,6 @@ pipeline {
 
         stage('Image') {
             steps {
-                // EKS의 x86_64 노드용 이미지 빌드
                 sh 'docker build --platform linux/amd64 -t "$IMAGE:$TAG" app'
             }
         }
