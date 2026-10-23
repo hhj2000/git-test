@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        IMAGE = 'my-app'
+        IMAGE = 'harbor.skala-gj.com/skala-gj3/g104-devops-lab-app'
         TAG = '2ec4a2b'
     }
 
@@ -39,7 +39,35 @@ pipeline {
 
         stage('Image') {
             steps {
-                sh 'docker build -t "$IMAGE:$TAG" app'
+                // EKS의 x86_64 노드용 이미지 빌드
+                sh 'docker build --platform linux/amd64 -t "$IMAGE:$TAG" app'
+            }
+        }
+
+        stage('Push') {
+            when {
+                expression {
+                    env.GIT_BRANCH == 'main' ||
+                    env.GIT_BRANCH == 'origin/main' ||
+                    env.BRANCH_NAME == 'main'
+                }
+            }
+
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'harbor-login',
+                        usernameVariable: 'REG_USER',
+                        passwordVariable: 'REG_PASS'
+                    )
+                ]) {
+                    sh '''
+                        set +x
+                        echo "$REG_PASS" | docker login harbor.skala-gj.com \
+                            -u "$REG_USER" --password-stdin
+                        docker push "$IMAGE:$TAG"
+                    '''
+                }
             }
         }
     }
