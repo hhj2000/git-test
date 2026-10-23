@@ -9,7 +9,7 @@ pipeline {
     }
 
     environment {
-        IMAGE = 'harbor.skala-gj.com/skala-gj3/g104-devops-lab-app'   // 반 번호와 개인 ID 로 바꾼다
+        IMAGE = 'harbor.skala-gj.com/skala-gj3/hyeongjun-skala-webserver'   // 반 번호와 개인 ID 로 바꾼다
     }
 
     stages {
