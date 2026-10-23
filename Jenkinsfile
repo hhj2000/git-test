@@ -1,83 +1,31 @@
+// 3장 첫 Pipeline — 무엇이 어떤 순서로 도는지만 본다.
+// Jenkins UI 의 Pipeline script 칸에 붙여 넣거나, repository 루트에 Jenkinsfile 로 둔다.
 pipeline {
     agent any
 
-    environment {
-        IMAGE = 'harbor.skala-gj.com/skala-gj3/g104-devops-lab-app'
-    }
-
-    options {
-        timeout(time: 20, unit: 'MINUTES')
-        skipDefaultCheckout(true)
-    }
-
     stages {
-        stage('Checkout') {
-            steps {
-                echo '소스코드 가져오기'
-                checkout scm
-
-                script {
-                    env.TAG = sh(
-                        script: 'git rev-parse HEAD',
-                        returnStdout: true
-                    ).trim().take(7)
-                }
-
-                echo "이미지: ${env.IMAGE}:${env.TAG}"
-            }
-        }
-
         stage('Build') {
             steps {
-                // 테스트는 다음 단계에서 실행
-                sh './gradlew build'
+                echo 'building the application...'
+                sh 'echo "build start"'
             }
         }
-
         stage('Test') {
             steps {
-                // 루트의 Wrapper로 app 프로젝트 테스트 실행
-                sh './gradlew :app:test --no-daemon'
-            }
-
-            post {
-                always {
-                    junit 'app/build/test-results/test/*.xml'
-                }
+                echo 'testing the application...'
+                sh 'echo "test start"'
             }
         }
-
-        stage('Image') {
+        stage('Deploy') {
             steps {
-                sh 'docker build --platform linux/amd64 -t "$IMAGE:$TAG" app'
+                echo 'deploying the application...'
+                sh 'echo "deploy start"'
             }
         }
+    }
 
-        stage('Push') {
-            when {
-                expression {
-                    env.GIT_BRANCH == 'main' ||
-                    env.GIT_BRANCH == 'origin/main' ||
-                    env.BRANCH_NAME == 'main'
-                }
-            }
-
-            steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'harbor-login',
-                        usernameVariable: 'REG_USER',
-                        passwordVariable: 'REG_PASS'
-                    )
-                ]) {
-                    sh '''
-                        set +x
-                        echo "$REG_PASS" | docker login harbor.skala-gj.com \
-                            -u "$REG_USER" --password-stdin
-                        docker push "$IMAGE:$TAG"
-                    '''
-                }
-            }
-        }
+    post {
+        success { echo '모든 stage 성공' }
+        failure { echo '실패한 stage 의 Console Output 을 확인한다' }
     }
 }
