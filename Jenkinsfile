@@ -1,31 +1,58 @@
-// 3장 첫 Pipeline — 무엇이 어떤 순서로 도는지만 본다.
-// Jenkins UI 의 Pipeline script 칸에 붙여 넣거나, repository 루트에 Jenkinsfile 로 둔다.
+// 3장 앱 빌드 Pipeline — "Pipeline script from SCM" 으로 연결하고 Script Path 에 ch03-jenkins/Jenkinsfile 을 적는다.
+// 필요한 것: Jenkins 에 docker CLI(이 폴더의 Dockerfile), credentials 'harbor-login'(ID skala-gj<N>, 반 Harbor 비밀번호. push 할 때만)
 pipeline {
     agent any
 
+    options {
+        timeout(time: 20, unit: 'MINUTES')        // 멈춘 빌드가 executor 를 붙잡지 않게
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+    }
+
+    environment {
+        IMAGE = 'harbor.skala-gj.com/skala-gj3/g104-devops-lab-app'   // 반 번호와 개인 ID 로 바꾼다
+    }
+
     stages {
-        stage('Build') {
+        stage('Version') {
             steps {
-                echo 'building the application...'
-                sh 'echo "build start"'
+                script {
+                    env.TAG = sh(script: 'git rev-parse --short=7 HEAD', returnStdout: true).trim()
+                }
+                echo "image tag = ${env.TAG}"
             }
         }
         stage('Test') {
             steps {
-                echo 'testing the application...'
-                sh 'echo "test start"'
+                dir('app') {
+                    sh './gradlew test --no-daemon'
+                }
+            }
+            post {
+                always { junit 'app/build/test-results/test/*.xml' }   // 실패한 test 를 화면에서 본다
             }
         }
-        stage('Deploy') {
+        stage('Image') {
             steps {
-                echo 'deploying the application...'
-                sh 'echo "deploy start"'
+                // Apple Silicon Mac 은 arm64 image 를 만든다. EKS 노드(x86_64)에서 돌리려면 amd64 로 지정한다
+                sh 'docker build --platform linux/amd64 -t $IMAGE:$TAG app'
+            }
+        }
+        stage('Push') {
+            when { expression { env.GIT_BRANCH?.endsWith('main') } }   // main 만 push
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'harbor-login',
+                        usernameVariable: 'REG_USER', passwordVariable: 'REG_PASS')]) {
+                    sh '''
+                        echo "$REG_PASS" | docker login harbor.skala-gj.com -u "$REG_USER" --password-stdin
+                        docker push $IMAGE:$TAG
+                    '''
+                }
             }
         }
     }
 
     post {
-        success { echo '모든 stage 성공' }
-        failure { echo '실패한 stage 의 Console Output 을 확인한다' }
+        always  { sh 'docker image rm $IMAGE:$TAG || true' }   // 호스트 디스크가 차지 않게
+        failure { echo "실패: ${env.BUILD_URL}console" }
     }
 }
