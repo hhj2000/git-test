@@ -30,7 +30,7 @@ pipeline {
         stage('Build') {
             steps {
                 // 테스트는 다음 단계에서 실행
-                sh './gradlew :app:assemble --no-daemon'
+                sh './gradlew build'
             }
         }
 
